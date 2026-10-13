@@ -9,3 +9,10 @@ build/
 .env
 reports/
 linkedin/
+
+# Local only (not published): assistant files, interview prep, demo tooling
+CLAUDE.md
+.claude/
+docs/INTERVIEW.md
+docs/demo.tape
+.env.example

@@ -14,7 +14,7 @@
 
 <img src="docs/demo.gif" width="800" alt="Terminal demo: 'auditor demo weak_server --offline' starts four A2A agents, the orchestrator delegates scan, evaluation and remediation tasks to Google ADK and LangGraph agents, then the prioritized report lists 15 findings from critical to low" />
 
-<sub>Real recording, played back at 2×. Regenerate with <code>vhs docs/demo.tape</code>.</sub>
+<sub>Real recording, played back at 2×.</sub>
 
 ---
 
@@ -161,7 +161,7 @@ All 21 decisions, with reasons and trade-offs, are in [docs/DECISIONS.md](docs/D
 - Fetching the manifest runs the target's initialisation code (mitigated, not sandboxed in a container).
 - Targets must live in `targets/` (deliberate scope restriction).
 - A2A agents run on localhost **without authentication** and with in-memory task stores.
-- Observed LLM limits (free-tier quotas, instructions not always followed) are documented in [docs/INTERVIEW.md](docs/INTERVIEW.md#partie-2--choix-du-llm-et-limites-de-mistral).
+- Observed LLM limits (free-tier quotas, instructions not always followed) are documented in [docs/DECISIONS.md](docs/DECISIONS.md) (D8, D14).
 - Developed and tested on Windows 11 with Python 3.12; other platforms not tested yet.
 
 ## Quick start
@@ -175,7 +175,7 @@ uv run auditor demo weak_server --offline
 ```
 
 The first run takes about a minute (dependencies are compiled on first import); the report is written to `reports/weak_server.report.md` (and `.json`).
-To enable the Mistral-based features, copy `.env.example` to `.env`, set `MISTRAL_API_KEY`, and run the demo without `--offline`.
+To enable the Mistral-based features, create a `.env` file containing `MISTRAL_API_KEY=<your key>` and run the demo without `--offline`.
 
 Other commands: `uv run auditor ui` (agents + web Audit Console on http://127.0.0.1:10090), or `uv run auditor up` (agents only) then `uv run auditor audit safe_server` from another terminal.
 
@@ -199,7 +199,7 @@ targets/
 ├── weak_server/          deliberately vulnerable MCP server (inert tools, fake secrets)
 └── safe_server/          control server for false positives
 tests/                    unit · mcp · agents · a2a · e2e
-docs/                     architecture.md · DECISIONS.md · INTERVIEW.md
+docs/                     architecture.md · DECISIONS.md
 ```
 
 ## Tests
