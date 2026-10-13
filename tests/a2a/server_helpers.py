@@ -17,21 +17,21 @@ def free_port() -> int:
 
 
 @contextmanager
-def serve(app, port: int) -> Iterator[str]:
+def serve(app, port: int, probe_path: str = "/.well-known/agent-card.json") -> Iterator[str]:
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     base_url = f"http://127.0.0.1:{port}"
     deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:  # attend que la carte soit servie
+    while time.monotonic() < deadline:  # attend que la carte (ou probe_path) soit servie
         try:
-            if httpx.get(f"{base_url}/.well-known/agent-card.json").status_code == 200:
+            if httpx.get(f"{base_url}{probe_path}").status_code == 200:
                 break
         except httpx.TransportError:
             pass
         time.sleep(0.2)
     else:
-        raise RuntimeError("A2A server did not start")
+        raise RuntimeError(f"server on port {port} did not start")
     try:
         yield base_url
     finally:
