@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "google-adk>=2.11.0",
+    "litellm>=1.105.0",
     "mcp>=2.3.0",
     "pydantic>=2.14.1",
 ]
@@ -21,6 +23,13 @@ module-name = "auditor"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["live: calls the real Mistral API (skipped without MISTRAL_API_KEY)"]
+filterwarnings = [
+    # Bruit interne à ADK (fonctionnalités expérimentales activées par défaut,
+    # et ADK qui instancie lui-même sa classe MCPTool dépréciée).
+    'ignore:\[EXPERIMENTAL\]:UserWarning',
+    "ignore:MCPTool class is deprecated:DeprecationWarning",
+]
 
 [dependency-groups]
 dev = [
