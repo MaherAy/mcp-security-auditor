@@ -35,9 +35,11 @@ from auditor.a2a_common import (
 from auditor.agents.orchestrator.report import write_reports
 from auditor.models import AuditReport, Severity
 
-# Ordre de démarrage : les agents délégués d'abord, l'orchestrateur en dernier.
 AGENTS = ["scanner", "evaluator", "remediation", "orchestrator"]
-STARTUP_TIMEOUT_SECONDS = 60
+# Premier lancement sur un environnement neuf : Python compile le bytecode d'ADK,
+# LangChain, LiteLLM… (plus d'une minute mesurée). Les agents démarrent en
+# parallèle, chacun avec ce délai (surchargeable).
+STARTUP_TIMEOUT_SECONDS = float(os.environ.get("AUDITOR_STARTUP_TIMEOUT", "180"))
 
 
 def _wait_until_ready(url: str, process: subprocess.Popen, deadline: float) -> None:
@@ -71,14 +73,21 @@ def running_agents(log_dir: Path, *, offline: bool = False) -> Iterator[dict[str
     processes: list[subprocess.Popen] = []
     log_files = []
     try:
-        deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
+        # Démarrage en parallèle : l'orchestrateur n'a pas besoin des autres pour
+        # démarrer, il ne les découvre qu'au moment d'un audit.
         for name in AGENTS:
             log_file = (log_dir / f"{name}.log").open("w", encoding="utf-8")
             log_files.append(log_file)
-            process = subprocess.Popen(
-                [sys.executable, "-m", f"auditor.agents.{name}"], env=env, stdout=log_file, stderr=log_file
+            processes.append(
+                subprocess.Popen(
+                    [sys.executable, "-m", f"auditor.agents.{name}"],
+                    env=env,
+                    stdout=log_file,
+                    stderr=log_file,
+                )
             )
-            processes.append(process)
+        deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
+        for name, process in zip(AGENTS, processes, strict=True):
             _wait_until_ready(agent_url(name), process, deadline)
             print(f"  ✓ {name:<13} {agent_url(name)}/.well-known/agent-card.json")
         yield {name: agent_url(name) for name in AGENTS}
