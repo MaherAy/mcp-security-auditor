@@ -94,7 +94,7 @@ Chaque entrée : **contexte → décision → raison → compromis**.
 
 ## D8. Mistral via LiteLLM, tests avec un faux LLM
 
-- **Décision** : `LiteLlm(model="mistral/mistral-small-latest")` (surchargeable
+- **Décision** : `LiteLlm(model="mistral/open-mistral-nemo")` (surchargeable
   par `AUDITOR_LLM_MODEL`). Les tests utilisent `ScriptedLlm`, un `BaseLlm`
   qui renvoie une réponse fixée ; un test `@pytest.mark.live` appelle le vrai
   Mistral et est ignoré sans `MISTRAL_API_KEY`.
@@ -103,3 +103,8 @@ Chaque entrée : **contexte → décision → raison → compromis**.
   dépendre du réseau ni d'un quota.
 - **Compromis** : le test hors-ligne ne vérifie pas la *qualité* du jugement de
   Mistral, seulement notre intégration.
+- **Constat (test live)** : avec une clé de l'offre gratuite, `mistral-small-latest`
+  et `mistral-medium-latest` renvoient 429 dès le premier appel (quota par
+  modèle), `mistral-large-latest` renvoie 403 ; `open-mistral-nemo` et
+  `ministral-8b-latest` fonctionnent. Défaut : `open-mistral-nemo`. Sur la cible
+  faible, Mistral signale uniquement `add` (confirme TP001), aucun faux positif.

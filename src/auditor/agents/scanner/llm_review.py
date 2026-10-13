@@ -18,7 +18,8 @@ from google.adk.models.base_llm import BaseLlm
 from google.adk.models.lite_llm import LiteLlm
 from pydantic import BaseModel
 
-DEFAULT_MODEL = "mistral/mistral-small-latest"  # préfixe "mistral/" = fournisseur LiteLLM
+# open-mistral-nemo : disponible sur l'offre gratuite (mistral-small-latest y renvoie 429).
+DEFAULT_MODEL = "mistral/open-mistral-nemo"  # préfixe "mistral/" = fournisseur LiteLLM
 REVIEW_INPUT_STATE_KEY = "tools_for_review"
 REVIEW_OUTPUT_STATE_KEY = "llm_review"
 
