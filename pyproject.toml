@@ -10,6 +10,8 @@ requires-python = ">=3.12"
 dependencies = [
     "a2a-sdk[http-server]>=1.2.2",
     "google-adk>=2.11.0",
+    "langchain-mistralai>=1.1.6",
+    "langgraph>=1.2.15",
     "litellm>=1.105.0",
     "mcp>=2.3.0",
     "pydantic>=2.14.1",
