@@ -169,7 +169,7 @@ All 21 decisions, with reasons and trade-offs, are in [docs/DECISIONS.md](docs/D
 Requires [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 if needed).
 
 ```bash
-git clone <this-repo-url> mcp-security-auditor && cd mcp-security-auditor
+git clone https://github.com/MaherAy/mcp-security-auditor.git mcp-security-auditor && cd mcp-security-auditor
 uv sync
 uv run auditor demo weak_server --offline
 ```
