@@ -74,3 +74,57 @@ class ScanResult(BaseModel):
     manifest: TargetManifest
     files_scanned: list[str]
     findings: list[Finding]
+
+
+# --- Évaluation (agent Évaluateur) ---------------------------------------------
+
+
+class Severity(StrEnum):
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+    @property
+    def rank(self) -> int:
+        """Ordre de tri : critical=0 … low=3."""
+        return list(Severity).index(self)
+
+
+class RatedFinding(Finding):
+    """Un constat classé : sévérité + score + justification, preuve conservée."""
+
+    severity: Severity
+    score: float = Field(ge=0, le=10)  # 0–10, pour départager à sévérité égale
+    rationale: str  # raison de la sévérité selon la politique (déterministe)
+    justification: str  # explication du risque, rédigée (LLM ou gabarit)
+
+
+class Evaluation(BaseModel):
+    """Sortie de l'Évaluateur : constats triés du plus grave au moins grave."""
+
+    target: str
+    overall_risk: Severity | Literal["none"]
+    counts: dict[Severity, int]
+    findings: list[RatedFinding]
+    justified_by: Literal["llm", "template"]
+
+
+# --- Remédiation (agent Remédiation) --------------------------------------------
+
+
+class Remediation(BaseModel):
+    finding_id: str
+    severity: Severity
+    title: str  # titre du constat traité
+    fix: str  # correctif adapté au cas (LLM) ou identique à baseline_fix (hors-ligne)
+    baseline_fix: str  # correctif relu du catalogue, toujours conservé : le LLM peut l'affaiblir
+    steps: list[str]
+    code_example: str = ""
+    references: list[str] = Field(default_factory=list)
+
+
+class RemediationPlan(BaseModel):
+    target: str
+    items: list[Remediation]  # même ordre que l'évaluation (priorité)
+    tailored_by: Literal["llm", "template"]
