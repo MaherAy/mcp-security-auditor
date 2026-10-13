@@ -10,11 +10,6 @@ from auditor.mcp_inspector.server import inspector
 pytestmark = pytest.mark.anyio
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 async def call(client: Client, tool: str, **arguments):
     return await client.call_tool(tool, arguments)
 
