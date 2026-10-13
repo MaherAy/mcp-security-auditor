@@ -128,3 +128,37 @@ class RemediationPlan(BaseModel):
     target: str
     items: list[Remediation]  # même ordre que l'évaluation (priorité)
     tailored_by: Literal["llm", "template"]
+
+
+# --- Rapport final (orchestrateur) ------------------------------------------------
+
+
+class AgentRun(BaseModel):
+    """Trace d'une délégation A2A : quel agent, quel framework, quelle Task, quels états."""
+
+    role: str  # "scanner" | "evaluator" | "remediation"
+    skill_id: str
+    agent_name: str
+    framework: str  # déduit des tags de l'Agent Card
+    url: str
+    task_id: str
+    states: list[str]
+
+
+class ReportItem(BaseModel):
+    finding: RatedFinding
+    remediation: Remediation | None
+
+
+class AuditReport(BaseModel):
+    target: str
+    server_name: str
+    tools_count: int
+    files_scanned: list[str]
+    generated_at: str  # ISO 8601, UTC
+    overall_risk: Severity | Literal["none"]
+    counts: dict[Severity, int]
+    items: list[ReportItem]  # triés par priorité
+    agents: list[AgentRun]
+    justified_by: Literal["llm", "template"]
+    tailored_by: Literal["llm", "template"]
