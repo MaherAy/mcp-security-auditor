@@ -213,3 +213,52 @@ Chaque entrée : **contexte → décision → raison → compromis**.
   `test_cross_framework_chain_adk_to_langgraph`.
 - **Leçon** : un contrat d'interface entre agents doit être validé à la
   réception, jamais supposé.
+
+## D17. Orchestrateur en SDK A2A seul, découverte par compétence
+
+- **Décision** : l'orchestrateur n'utilise aucun framework d'agent : un
+  `AgentExecutor` + du Python. Il ne connaît que des URL ; il lit chaque Agent
+  Card et choisit l'agent par **identifiant de compétence**
+  (`scan_mcp_server`, `rate_findings`, `propose_fixes`).
+- **Raison** : (1) son travail est un enchaînement fixe, sans besoin de LLM ;
+  (2) le projet montre ainsi trois façons d'exposer un agent en A2A (ADK
+  `to_a2a`, LangGraph + exécuteur générique, SDK seul) ; (3) remplacer un agent
+  par un autre offrant la même compétence ne change pas l'orchestrateur.
+- **Compromis** : demande en texte libre interprétée simplement (dernier mot
+  ressemblant à un nom de cible) ; un LLM pourrait comprendre des demandes plus
+  riches, mais le Scanner revalide de toute façon le nom.
+- **Propagation des erreurs** : une Task déléguée en échec fait échouer la
+  Task de l'orchestrateur avec un message qui nomme le rôle et l'agent ; une
+  compétence introuvable est signalée avant toute délégation.
+
+## D18. Rapport : deux artefacts, chaque étape revalidée
+
+- Artefact `audit_report` (partie `data`, `application/json`) pour les
+  machines ; artefact `audit_report.md` (partie texte, `text/markdown`) pour
+  les humains. La CLI écrit les deux dans `reports/`.
+- Le rapport contient la trace A2A de chaque délégation (agent, framework lu
+  dans la carte, id de Task, états observés).
+
+## D19. Un processus par agent ; refus de démarrer sur un port occupé
+
+- **Décision** : `auditor up/demo` lance chaque agent dans son propre processus
+  (services réellement indépendants, journaux séparés dans `reports/logs/`).
+- **Incident vécu** : un prototype de la phase 3 occupait encore le port 10001.
+  Le nouveau Scanner n'a pas pu démarrer, mais la vérification « la carte
+  répond » a réussi… grâce à l'ancien processus, qui servait une carte sans la
+  compétence `scan_mcp_server`. L'orchestrateur a alors échoué (proprement).
+- **Correction** : la CLI refuse de démarrer si un port est déjà pris.
+- **Leçon A2A** : la découverte fait confiance à ce qui répond à une URL. En
+  production il faudrait authentifier les agents (TLS, schémas de sécurité de
+  la carte) et vérifier les signatures de carte (`AgentCard.signatures`,
+  `signature_verifier` du résolveur, présents dans a2a-sdk 1.x).
+
+## D20. L'auto-audit trouve de vrais faux positifs
+
+- **Décision** : un test applique les règles de code à tout `src/auditor`.
+- **Résultat** : deux constats. (1) HS002 sur `HARDCODED_SECRET =
+  "hardcoded_secret"` (membre d'enum) : vrai défaut de la règle, corrigé (une
+  constante dont la valeur est son propre nom est une étiquette) + test.
+  (2) HS001 sur un exemple de clé AWS dans une docstring : comportement voulu
+  (les scanners de secrets signalent aussi la documentation) ; c'est la
+  docstring qui a été changée.
