@@ -7,7 +7,10 @@ authors = [
     { name = "MaherAy", email = "maher.ayachi@etudiant-isi.utm.tn" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "mcp>=2.3.0",
+    "pydantic>=2.14.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.12,<0.13.0"]
@@ -25,3 +28,8 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.17.0",
 ]
+
+[tool.ruff]
+line-length = 110
+# La cible vulnérable est volontairement « sale » : on ne la linte pas.
+extend-exclude = ["targets/weak_server"]
