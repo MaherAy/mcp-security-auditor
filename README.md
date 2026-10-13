@@ -159,7 +159,7 @@ uv sync
 uv run auditor demo weak_server --offline
 ```
 
-The report is written to `reports/weak_server.report.md` (and `.json`).
+The first run takes about a minute (dependencies are compiled on first import); the report is written to `reports/weak_server.report.md` (and `.json`).
 To enable the Mistral-based features, copy `.env.example` to `.env`, set `MISTRAL_API_KEY`, and run the demo without `--offline`.
 
 Other commands: `uv run auditor up` (start the four agents and keep them running), then `uv run auditor audit safe_server` from another terminal.
