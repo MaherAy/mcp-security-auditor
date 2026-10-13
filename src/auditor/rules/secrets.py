@@ -29,7 +29,11 @@ MIN_SECRET_LENGTH = 6
 
 
 def mask(secret: str) -> str:
-    """'AKIAIOSFODNN7EXAMPLE' -> 'AKIA…(20 chars)'."""
+    """Clé AWS de 20 caractères -> 'AKIA…(20 chars)'.
+
+    (Pas d'exemple de clé réelle ici : notre propre règle HS001 la signalerait,
+    à juste titre — voir test_auditor_dogfooding_whole_codebase_is_clean.)
+    """
     return f"{secret[:4]}…({len(secret)} chars)"
 
 
@@ -65,8 +69,12 @@ def _assignment_findings(path: str, code: str, already_flagged: set[int]) -> lis
         names = [target.id for target in targets if isinstance(target, ast.Name)]
         value = node.value
         is_literal = isinstance(value, ast.Constant) and isinstance(value.value, str)
+        # Une constante dont la valeur est son propre nom est une étiquette, pas un
+        # secret : `PASSWORD = "password"`, `HARDCODED_SECRET = "hardcoded_secret"`.
+        is_self_label = is_literal and any(value.value.lower() == n.lower() for n in names)
         if (
             is_literal
+            and not is_self_label
             and len(value.value) >= MIN_SECRET_LENGTH
             and any(SENSITIVE_NAME.search(n) for n in names)
         ):
