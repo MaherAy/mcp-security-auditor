@@ -162,3 +162,33 @@ class AuditReport(BaseModel):
     agents: list[AgentRun]
     justified_by: Literal["llm", "template"]
     tailored_by: Literal["llm", "template"]
+
+
+# --- Observabilité (événements publiés par l'orchestrateur) ------------------------
+
+
+class DiscoveredAgent(BaseModel):
+    role: str
+    name: str
+    framework: str
+    url: str
+    skills: list[str]
+
+
+class ProgressEvent(BaseModel):
+    """Un événement d'observabilité, publié en direct par l'orchestrateur.
+
+    Il voyage dans les statuts WORKING de la Task A2A, sous deux formes :
+    une partie texte (`message`, pour la CLI) et une partie `data` (cet objet,
+    pour l'interface web). Une seule source de vérité pour les deux affichages.
+    """
+
+    kind: Literal["discovered", "task_state", "agent_message"]
+    message: str  # version lisible
+    at: str  # ISO 8601 UTC, à la milliseconde
+    role: str | None = None  # "scanner" | "evaluator" | "remediation"
+    agent_name: str | None = None
+    framework: str | None = None
+    task_id: str | None = None
+    state: str | None = None  # submitted | working | completed | failed | rejected…
+    agents: list[DiscoveredAgent] = Field(default_factory=list)  # pour kind="discovered"

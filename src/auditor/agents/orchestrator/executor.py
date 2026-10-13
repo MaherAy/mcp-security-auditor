@@ -20,6 +20,7 @@ from a2a.types import Part, Task, TaskState, TaskStatus
 from auditor.a2a_common import data_part, part_payload
 from auditor.agents.orchestrator.pipeline import OrchestrationError, run_audit
 from auditor.agents.orchestrator.report import render_markdown
+from auditor.models import ProgressEvent
 
 TARGET_NAME = re.compile(r"[A-Za-z0-9_-]+")
 
@@ -63,11 +64,11 @@ class OrchestratorExecutor(AgentExecutor):
 
         await updater.start_work(updater.new_agent_message([new_text_part(f"auditing '{target}'")]))
 
-        async def progress(text: str) -> None:
-            # Chaque étape de délégation devient un statut WORKING visible du client.
-            await updater.update_status(
-                TaskState.TASK_STATE_WORKING, updater.new_agent_message([new_text_part(text)])
-            )
+        async def progress(event: ProgressEvent) -> None:
+            # Chaque événement devient un statut WORKING visible du client, en double
+            # forme : texte (CLI) + partie data structurée (interface d'observabilité).
+            parts = [new_text_part(event.message), data_part(event.model_dump(mode="json"))]
+            await updater.update_status(TaskState.TASK_STATE_WORKING, updater.new_agent_message(parts))
 
         try:
             report = await run_audit(target, self.agent_urls, progress=progress)

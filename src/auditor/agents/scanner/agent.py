@@ -132,8 +132,13 @@ class ScannerAgent(BaseAgent):
         try:
             inspector = InspectorClient(toolset, ctx)
             manifest = await inspector.fetch_manifest(target)
+            # Messages de progression : deviennent des statuts A2A WORKING (observabilité).
+            yield _text_event(
+                self.name, f"MCP tools/list: {len(manifest.tools)} tools in '{manifest.server_name}'"
+            )
             paths = await inspector.list_source_files(target)
             sources = {path: (await inspector.read_source(path)).content for path in paths}
+            yield _text_event(self.name, f"MCP read_source: {len(sources)} source file(s)")
         except InspectorError as error:
             yield _error_event(self.name, str(error))
             return
@@ -142,6 +147,7 @@ class ScannerAgent(BaseAgent):
 
         # 2) Détection déterministe.
         findings = run_all_rules(AuditContext(manifest=manifest, sources=sources))
+        yield _text_event(self.name, f"rules: {len(findings)} finding(s)")
 
         # 3) Second avis LLM (optionnel) : on passe par l'état de session,
         #    canal de communication standard entre agents ADK.

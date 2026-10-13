@@ -14,9 +14,10 @@ cartes et messages avec les constructeurs protobuf, et on les convertit en
 dict avec `google.protobuf.json_format`.
 """
 
+import inspect
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -142,6 +143,7 @@ class TaskTrace:
     task_id: str = ""
     states: list[str] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)  # textes des statuts reçus (progression)
+    events: list[dict[str, Any]] = field(default_factory=list)  # parties `data` des statuts reçus
 
     def record(self, state: int) -> None:
         name = TaskState.Name(state).removeprefix("TASK_STATE_").lower()
@@ -163,7 +165,7 @@ async def send_task(
     card: AgentCard,
     parts: list[Part],
     *,
-    on_update: Callable[[TaskTrace], None] | None = None,
+    on_update: Callable[[TaskTrace], None | Awaitable[None]] | None = None,
 ) -> tuple[Task, TaskTrace]:
     """Envoie un message (→ crée une Task), suit les mises à jour en streaming,
     puis relit la Task finale complète avec `GetTask`."""
@@ -186,8 +188,12 @@ async def send_task(
             status_text = task_status_text(response.status_update.status)
             if status_text:
                 trace.messages.append(status_text)
+            message = response.status_update.status.message
+            trace.events += [p for p in map(part_payload, message.parts) if isinstance(p, dict)]
         if on_update:
-            on_update(trace)
+            result = on_update(trace)  # le rappel peut être synchrone ou asynchrone
+            if inspect.isawaitable(result):
+                await result
     task = await client.get_task(GetTaskRequest(id=trace.task_id))
     trace.record(task.status.state)
     if task.status.state != TaskState.TASK_STATE_COMPLETED:

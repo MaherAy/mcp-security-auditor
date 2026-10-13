@@ -20,8 +20,17 @@ from datetime import UTC, datetime
 import httpx
 from a2a.types import AgentCard
 
-from auditor.a2a_common import data_part, discover_agent, send_task, task_data, text_parts
-from auditor.models import AgentRun, AuditReport, Evaluation, RemediationPlan, ReportItem, ScanResult
+from auditor.a2a_common import TaskTrace, data_part, discover_agent, send_task, task_data, text_parts
+from auditor.models import (
+    AgentRun,
+    AuditReport,
+    DiscoveredAgent,
+    Evaluation,
+    ProgressEvent,
+    RemediationPlan,
+    ReportItem,
+    ScanResult,
+)
 
 # Rôle dans le pipeline → compétence A2A attendue.
 REQUIRED_SKILLS = {
@@ -31,7 +40,11 @@ REQUIRED_SKILLS = {
 }
 KNOWN_FRAMEWORKS = ("google-adk", "langgraph", "a2a-sdk")
 
-ProgressCallback = Callable[[str], Awaitable[None]]
+ProgressCallback = Callable[[ProgressEvent], Awaitable[None]]
+
+
+def now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
 class OrchestrationError(RuntimeError):
@@ -90,16 +103,32 @@ async def run_audit(
     progress: ProgressCallback | None = None,
     timeout_seconds: float = 300,
 ) -> AuditReport:
-    async def report_progress(text: str) -> None:
+    async def emit(kind: str, message: str, **fields) -> None:
         if progress:
-            await progress(text)
+            await progress(ProgressEvent(kind=kind, message=message, at=now_iso(), **fields))
 
     agents: list[AgentRun] = []
 
     async def delegate(role: str, card: AgentCard, parts) -> dict:
-        await report_progress(f"{role}: sending task to {card.name} ({framework_of(card)})")
+        who = {"role": role, "agent_name": card.name, "framework": framework_of(card)}
+        await emit("agent_message", f"{role}: sending task to {card.name} ({who['framework']})", **who)
+        seen = {"states": 0, "messages": 0}
+
+        async def relay(trace: TaskTrace) -> None:
+            """Observabilité en direct : chaque nouvel état de la Task déléguée et
+            chaque message de l'agent distant (ex. « step 'classify' done ») est
+            republié aussitôt, avant même la fin de la délégation."""
+            for state in trace.states[seen["states"] :]:
+                message = f"{role}: task {trace.task_id[:8]} {state}"
+                await emit("task_state", message, task_id=trace.task_id, state=state, **who)
+            seen["states"] = len(trace.states)
+            for text in trace.messages[seen["messages"] :]:
+                short = text if len(text) <= 160 else text[:157] + "…"  # ex. JSON de la relecture LLM
+                await emit("agent_message", f"{role} › {short}", task_id=trace.task_id, **who)
+            seen["messages"] = len(trace.messages)
+
         try:
-            task, trace = await send_task(http, card, parts)
+            task, trace = await send_task(http, card, parts, on_update=relay)
         except Exception as error:
             raise OrchestrationError(f"{role} ({card.name}) failed: {error}") from error
         agents.append(
@@ -113,13 +142,27 @@ async def run_audit(
                 states=trace.states,
             )
         )
-        await report_progress(f"{role}: task {task.id[:8]} {' → '.join(trace.states)}")
+        # Résumé du cycle de vie (les états eux-mêmes ont déjà été publiés par relay).
+        await emit(
+            "agent_message", f"{role}: task {task.id[:8]} {' → '.join(trace.states)}", task_id=task.id, **who
+        )
         return task_data(task)
 
     async with httpx.AsyncClient(timeout=timeout_seconds) as http:
         cards = await discover_agents(http, agent_urls)
-        await report_progress(
-            "discovered: " + ", ".join(f"{role}={card.name}" for role, card in cards.items())
+        await emit(
+            "discovered",
+            "discovered: " + ", ".join(f"{role}={card.name}" for role, card in cards.items()),
+            agents=[
+                DiscoveredAgent(
+                    role=role,
+                    name=card.name,
+                    framework=framework_of(card),
+                    url=card.supported_interfaces[0].url,
+                    skills=[skill.id for skill in card.skills],
+                )
+                for role, card in cards.items()
+            ],
         )
 
         # Chaque sortie est revalidée par Pydantic avant d'être transmise (DECISIONS D16).
