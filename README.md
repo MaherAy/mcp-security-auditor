@@ -70,6 +70,17 @@ Excerpt of the generated Markdown report (run with Mistral enabled):
 
 On the deliberately weak test server, the audit reports **15 findings across all four risk classes**; on the safe control server it reports **none**.
 
+## Audit Console (observability)
+
+`uv run auditor ui` starts the four agents and opens a local web console that follows an audit **live**, from the A2A event stream:
+
+![Audit Console: live agent topology with A2A and MCP links, per-agent A2A task timeline, live event stream relayed from the orchestrator, and the prioritized report](docs/console.png)
+
+- **Agent topology**: Agent Cards discovered over A2A, framework of each agent, live Task state of each node (`submitted → working → completed`).
+- **A2A task timeline**: one lane per delegated agent. With Mistral enabled it shows where the time goes: in the recorded run the deterministic steps took milliseconds and the LLM-backed `justify` step about 13 s.
+- **Live event stream**: structured `ProgressEvent`s that the orchestrator publishes in its A2A task statuses, including the remote agents' own steps (LangGraph nodes, the scanner's MCP calls).
+- **Interactive report**: every finding with its evidence, justification and fix. Target content is untrusted (it contains `<IMPORTANT>` prompt-injection text), so the page renders it with `textContent` only; a Chromium test checks it.
+
 ## Architecture
 
 ```mermaid
@@ -132,6 +143,7 @@ The orchestrator only knows URLs. It reads each agent's **Agent Card**, picks ag
 - **Three ways to expose an agent over A2A**: ADK `to_a2a`, a generic LangGraph `AgentExecutor`, and the bare A2A SDK.
 - **Fully offline mode** (`--offline`): same findings and severities, template wording, no API call.
 - **Self-audit**: a test runs the code rules on the auditor's own source; it found and fixed a real false positive.
+- **Observability**: the orchestrator publishes structured progress events in its A2A task; the CLI and the web Audit Console read the same stream.
 
 ## Key technical decisions
 
@@ -165,7 +177,7 @@ uv run auditor demo weak_server --offline
 The first run takes about a minute (dependencies are compiled on first import); the report is written to `reports/weak_server.report.md` (and `.json`).
 To enable the Mistral-based features, copy `.env.example` to `.env`, set `MISTRAL_API_KEY`, and run the demo without `--offline`.
 
-Other commands: `uv run auditor up` (start the four agents and keep them running), then `uv run auditor audit safe_server` from another terminal.
+Other commands: `uv run auditor ui` (agents + web Audit Console on http://127.0.0.1:10090), or `uv run auditor up` (agents only) then `uv run auditor audit safe_server` from another terminal.
 
 ## Project structure
 
@@ -177,11 +189,12 @@ src/auditor/
 │   ├── scanner/          Google ADK agent + Agent Card, exposed with to_a2a
 │   ├── evaluator/        LangGraph graph + severity policy
 │   ├── remediation/      LangGraph graph + reviewed fix catalogue
-│   └── orchestrator/     A2A SDK only: discovery, delegation, report rendering
+│   └── orchestrator/     A2A SDK only: discovery, delegation, progress events, report
+├── ui/                   Audit Console: A2A client of the orchestrator, SSE to the browser
 ├── a2a_common.py         Agent Cards, data parts, task client
 ├── a2a_langgraph.py      generic AgentExecutor for LangGraph graphs
 ├── models.py             shared Pydantic contracts
-└── cli.py                auditor up / audit / demo
+└── cli.py                auditor up / audit / demo / ui
 targets/
 ├── weak_server/          deliberately vulnerable MCP server (inert tools, fake secrets)
 └── safe_server/          control server for false positives
@@ -192,7 +205,8 @@ docs/                     architecture.md · DECISIONS.md · INTERVIEW.md
 ## Tests
 
 ```bash
-uv run pytest -m "not live"    # 64 tests, offline (real MCP stdio, real A2A HTTP servers, fake LLMs)
+uv run pytest -m "not live"    # 70 tests, offline (real MCP stdio, real A2A HTTP servers, fake LLMs, headless Chromium)
+uv run playwright install chromium   # once, for the browser test (skipped otherwise)
 uv run pytest -m live          # 2 tests calling the Mistral API (needs MISTRAL_API_KEY)
 ```
 
@@ -202,7 +216,7 @@ uv run pytest -m live          # 2 tests calling the Mistral API (needs MISTRAL_
 | `mcp` | inspector over in-memory and real stdio transports, sandbox escapes |
 | `agents` | ADK scanner and LangGraph graphs with scripted LLMs (fallbacks, hallucinated ids) |
 | `a2a` | Agent Card discovery, data artifacts, `failed` / `rejected` tasks, ADK → LangGraph chain |
-| `e2e` | full audit through the orchestrator, error propagation, the `auditor demo` CLI |
+| `e2e` | full audit through the orchestrator, error propagation, the `auditor demo` CLI, the Audit Console (SSE stream, XSS-safe rendering in Chromium) |
 
 ## Roadmap
 

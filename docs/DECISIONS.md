@@ -278,3 +278,34 @@ agents démarrent désormais en parallèle, avec un délai de 180 s
   acceptés par le serveur si `enable_v0_3_compat=True`, ce que fait ADK).
 - **Correction** : nos commentaires et diagrammes utilisaient les noms 0.3,
   écrits de mémoire ; ils ont été alignés sur le code du SDK installé.
+
+## D22. Observabilité : événements structurés dans la Task A2A, console web en SSE
+
+- **Décision** : l'orchestrateur publie des `ProgressEvent` (découverte, chaque
+  état de chaque Task déléguée, messages internes des agents distants) dans les
+  statuts `WORKING` de sa propre Task, sous deux formes : texte (CLI) et partie
+  `data` (interface). L'Audit Console (`auditor ui`) est un **client A2A** de
+  l'orchestrateur qui relaie ces événements au navigateur en Server-Sent Events.
+- **Raison** : aucune voie de télémétrie parallèle à maintenir : le protocole
+  A2A transporte déjà l'observabilité. Les étapes internes d'un agent LangGraph
+  (« step 'classify' done ») traversent deux sauts A2A et arrivent dans le
+  navigateur pendant que la délégation est en cours (`send_task` accepte
+  désormais un rappel asynchrone).
+- **Valeur constatée** : avec Mistral, la chronologie montre que le temps est
+  dans les étapes LLM (≈ 13 s pour `justify`, ≈ 5 s pour `tailor` lors de
+  l'enregistrement), pas dans l'orchestration (millisecondes).
+- **Sécurité** : la console écoute sur 127.0.0.1, valide le nom de cible, et
+  affiche le contenu de la cible avec `textContent` uniquement : une description
+  empoisonnée (`<IMPORTANT>…`) ne doit pas devenir du HTML dans l'outil d'audit.
+  Deux tests : absence d'API d'injection HTML dans le script, et rendu vérifié
+  dans Chromium (Playwright).
+- **Compromis** : pas de stockage des audits (historique en mémoire) ni de
+  traces OpenTelemetry/Langfuse ; ce serait l'étape suivante pour un usage réel.
+
+## D23. Port de la console : 10090
+
+- 8080 était déjà occupé sur la machine de développement (un Apache) : la
+  vérification de port de la CLI l'a refusé, comme prévu (D19).
+- 10080 a ensuite été rejeté par Chromium (`ERR_UNSAFE_PORT` : port de la liste
+  des ports bloqués par les navigateurs). Choix final : 10090, surchargeable par
+  `--port` ou `AUDITOR_UI_PORT`.
