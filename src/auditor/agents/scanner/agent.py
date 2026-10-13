@@ -12,6 +12,11 @@ import json
 import re
 from collections.abc import AsyncGenerator
 
+from google.adk.a2a.converters.part_converter import (
+    A2A_DATA_PART_END_TAG,
+    A2A_DATA_PART_START_TAG,
+    A2A_DATA_PART_TEXT_MIME_TYPE,
+)
 from google.adk.agents import BaseAgent, InvocationContext, LlmAgent
 from google.adk.events import Event, EventActions
 from google.genai import types
@@ -77,8 +82,38 @@ def _text_event(author: str, text: str, state_delta: dict | None = None) -> Even
     )
 
 
+def data_part(payload: dict) -> types.Part:
+    """Partie ADK qui deviendra une partie A2A `data` (JSON structuré).
+
+    POURQUOI : en A2A, un résultat structuré doit voyager comme `data`, pas comme
+    du texte à re-parser. ADK n'a pas de type « data » natif ; son convertisseur
+    A2A reconnaît un blob encadré par ces balises et le transforme en partie
+    `data` (convention de google.adk.a2a.converters.part_converter).
+    """
+    raw = json.dumps(payload).encode("utf-8")
+    return types.Part(
+        inline_data=types.Blob(
+            mime_type=A2A_DATA_PART_TEXT_MIME_TYPE,
+            data=A2A_DATA_PART_START_TAG + raw + A2A_DATA_PART_END_TAG,
+        )
+    )
+
+
+def read_data_part(part: types.Part) -> dict | None:
+    """Inverse de `data_part` (utile aux tests en mémoire, sans passer par A2A)."""
+    blob = part.inline_data
+    if blob is None or not blob.data or not blob.data.startswith(A2A_DATA_PART_START_TAG):
+        return None
+    return json.loads(blob.data[len(A2A_DATA_PART_START_TAG) : -len(A2A_DATA_PART_END_TAG)])
+
+
+def _error_event(author: str, message: str) -> Event:
+    # Un `error_code` fait passer la Task A2A à l'état FAILED (et non COMPLETED).
+    return Event(author=author, error_code="SCAN_FAILED", error_message=message)
+
+
 class ScannerAgent(BaseAgent):
-    """Entrée : nom de cible. Sortie : un `ScanResult` JSON (dernier événement)."""
+    """Entrée : nom de cible (texte). Sortie : un `ScanResult` en partie `data` (dernier événement)."""
 
     reviewer: LlmAgent | None = None
 
@@ -89,7 +124,7 @@ class ScannerAgent(BaseAgent):
         try:
             target = parse_target_request(request_text)
         except ValueError as error:
-            yield _text_event(self.name, json.dumps({"error": str(error)}))
+            yield _error_event(self.name, str(error))
             return
 
         # 1) Collecte via MCP — l'agent ne lit rien lui-même.
@@ -100,7 +135,7 @@ class ScannerAgent(BaseAgent):
             paths = await inspector.list_source_files(target)
             sources = {path: (await inspector.read_source(path)).content for path in paths}
         except InspectorError as error:
-            yield _text_event(self.name, json.dumps({"error": str(error)}))
+            yield _error_event(self.name, str(error))
             return
         finally:
             await toolset.close()  # arrête le sous-processus de l'inspecteur
@@ -125,7 +160,11 @@ class ScannerAgent(BaseAgent):
 
         result = ScanResult(target=target, manifest=manifest, files_scanned=paths, findings=findings)
         payload = result.model_dump(mode="json")
-        yield _text_event(self.name, json.dumps(payload), {SCAN_RESULT_STATE_KEY: payload})
+        yield Event(
+            author=self.name,
+            content=types.Content(role="model", parts=[data_part(payload)]),
+            actions=EventActions(state_delta={SCAN_RESULT_STATE_KEY: payload}),
+        )
 
 
 def build_scanner_agent(reviewer: LlmAgent | None = None, *, use_llm: bool | None = None) -> ScannerAgent:

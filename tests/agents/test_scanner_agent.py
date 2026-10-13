@@ -6,21 +6,22 @@ import pytest
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 
-from auditor.agents.scanner.agent import build_scanner_agent, parse_target_request
+from auditor.agents.scanner.agent import build_scanner_agent, parse_target_request, read_data_part
 from auditor.agents.scanner.llm_review import build_description_reviewer
 from tests.agents.fakes import ScriptedLlm
 
 pytestmark = pytest.mark.anyio
 
 
-async def run_scanner(agent, text: str) -> tuple[dict, list]:
+async def run_scanner(agent, text: str) -> tuple[dict | None, list]:
     runner = InMemoryRunner(agent=agent, app_name="scanner")
     session = await runner.session_service.create_session(app_name="scanner", user_id="test")
     message = types.Content(role="user", parts=[types.Part(text=text)])
     events = [
         event async for event in runner.run_async(user_id="test", session_id=session.id, new_message=message)
     ]
-    return json.loads(events[-1].content.parts[0].text), events
+    last = events[-1]
+    return (read_data_part(last.content.parts[0]) if last.content else None), events
 
 
 async def test_scanner_finds_all_weak_server_risks_offline():
@@ -44,8 +45,9 @@ async def test_scanner_reports_nothing_on_safe_server():
 
 @pytest.mark.parametrize("request_text", ["../etc", "does_not_exist"])
 async def test_scanner_returns_error_for_invalid_targets(request_text):
-    result, _ = await run_scanner(build_scanner_agent(use_llm=False), request_text)
-    assert "error" in result
+    result, events = await run_scanner(build_scanner_agent(use_llm=False), request_text)
+    assert result is None
+    assert events[-1].error_code == "SCAN_FAILED"
 
 
 def test_parse_target_request():
