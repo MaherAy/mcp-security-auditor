@@ -108,3 +108,51 @@ Chaque entrée : **contexte → décision → raison → compromis**.
   modèle), `mistral-large-latest` renvoie 403 ; `open-mistral-nemo` et
   `ministral-8b-latest` fonctionnent. Défaut : `open-mistral-nemo`. Sur la cible
   faible, Mistral signale uniquement `add` (confirme TP001), aucun faux positif.
+
+## D9. A2A 1.x : types protobuf, `to_a2a` d'ADK côté serveur
+
+- **Constat** : `a2a-sdk` 1.2.2 génère `a2a.types` depuis protobuf (`a2a_pb2`) ;
+  la 0.3 utilisait Pydantic. Conséquences : constructeurs protobuf
+  (`AgentCard(name=..., skills=[AgentSkill(...)])`), `WhichOneof("content")`
+  pour lire une partie, `MessageToDict` pour convertir, états en
+  `TASK_STATE_COMPLETED`. Les tutoriels 0.3 (`TextPart`, `DataPart`,
+  `Part(root=...)`) ne s'appliquent plus. ADK 2.11 gère les deux versions via
+  son module `_compat`.
+- **Décision** : le Scanner est exposé avec `to_a2a(agent, agent_card=...)`
+  d'ADK, qui fournit la route de la carte, le JSON-RPC et la conversion
+  événements ADK → mises à jour de Task.
+- **Raison** : zéro code de protocole à écrire côté ADK. La partie A2A
+  « manuelle » (`AgentExecutor`) sera montrée avec LangGraph en phase 4 :
+  le projet montre ainsi les deux façons d'exposer un agent.
+
+## D10. Agent Card écrite à la main, résultat en partie `data`
+
+- **Carte** : la carte générée par ADK pour un `BaseAgent` personnalisé ne
+  contient qu'une compétence `custom` / tag `custom_agent`. On écrit donc la
+  carte (`agents/scanner/card.py`) : compétence `scan_mcp_server`, entrée
+  texte, sortie `application/json`, exemples. C'est ce que lit l'orchestrateur.
+- **Résultat** : ADK n'a pas de type « data ». Son convertisseur A2A
+  transforme un blob encadré par `<a2a_datapart_json>…</a2a_datapart_json>` en
+  partie A2A `data` ; on utilise ses constantes publiques
+  (`google.adk.a2a.converters.part_converter`).
+  *Compromis* : dépendance à une convention interne d'ADK, couverte par le
+  test `test_scan_task_completes_with_structured_findings`.
+- **Erreurs** : un événement ADK avec `error_code` termine la Task en
+  `TASK_STATE_FAILED` (et non `COMPLETED` avec un JSON d'erreur) : l'appelant
+  distingue un échec par l'état de la Task, comme le prévoit le protocole.
+- **Cycle de vie observé** : `submitted → working → completed`. Les événements
+  intermédiaires (relecture LLM) deviennent des mises à jour d'état `working`,
+  pas des artefacts.
+
+## D11. a2a-sdk 1.2 : `Client.close()` ferme le client httpx prêté
+
+- **Constat** : `JsonRpcTransport.close()` appelle `httpx_client.aclose()`
+  même si le client httpx a été fourni par l'appelant via `ClientConfig`.
+  Symptôme : la 2e Task envoyée avec le même client httpx échoue avec
+  « Cannot send a request, as the client has been closed ».
+- **Décision** : `send_task` ne ferme pas le client A2A ; le client httpx
+  appartient à l'appelant (`async with httpx.AsyncClient()`). Test de
+  non-régression : `test_one_http_client_can_send_several_tasks`.
+- **Bruit connu** : ADK journalise « App name mismatch » (il déduit un nom
+  d'application du dossier `scanner/` alors que l'agent s'appelle
+  `mcp_scanner`) ; sans effet fonctionnel.
