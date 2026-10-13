@@ -85,8 +85,19 @@ def test_env_lookup_is_not_a_hardcoded_secret():
     assert run_all_rules(AuditContext(manifest_with(), {"t/server.py": code})) == []
 
 
-def test_auditor_dogfooding_inspector_code_is_clean():
-    """On applique nos règles de code à notre propre serveur MCP."""
-    inspector_dir = Path(__file__).parents[2] / "src" / "auditor" / "mcp_inspector"
-    sources = {path.name: path.read_text(encoding="utf-8") for path in inspector_dir.glob("*.py")}
+def test_auditor_dogfooding_whole_codebase_is_clean():
+    """On applique nos règles de code à tout le code de l'auditeur, y compris le
+    catalogue de correctifs qui CONTIENT des exemples dangereux dans des chaînes."""
+    package_dir = Path(__file__).parents[2] / "src" / "auditor"
+    sources = {
+        path.relative_to(package_dir).as_posix(): path.read_text(encoding="utf-8")
+        for path in package_dir.rglob("*.py")
+    }
+    assert len(sources) > 20
     assert run_all_rules(AuditContext(manifest_with(), sources)) == []
+
+
+def test_constant_labels_are_not_secrets():
+    """Faux positif trouvé par l'auto-audit (enum RiskCategory.HARDCODED_SECRET)."""
+    code = 'class Field:\n    PASSWORD = "password"\n    API_TOKEN = "api_token"\n'
+    assert run_all_rules(AuditContext(manifest_with(), {"t/server.py": code})) == []
