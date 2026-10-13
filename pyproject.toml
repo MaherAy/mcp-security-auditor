@@ -15,7 +15,11 @@ dependencies = [
     "litellm>=1.105.0",
     "mcp>=2.3.0",
     "pydantic>=2.14.1",
+    "python-dotenv>=1.2.4",
 ]
+
+[project.scripts]
+auditor = "auditor.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.12,<0.13.0"]
