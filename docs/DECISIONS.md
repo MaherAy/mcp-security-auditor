@@ -156,3 +156,60 @@ Chaque entrée : **contexte → décision → raison → compromis**.
 - **Bruit connu** : ADK journalise « App name mismatch » (il déduit un nom
   d'application du dossier `scanner/` alors que l'agent s'appelle
   `mcp_scanner`) ; sans effet fonctionnel.
+
+## D12. Évaluateur et Remédiation en LangGraph, exposés par un `AgentExecutor` écrit à la main
+
+- **Décision** : deux graphes LangGraph (`StateGraph` + état `TypedDict`) et
+  un adaptateur générique `LangGraphA2AExecutor` (`src/auditor/a2a_langgraph.py`)
+  monté avec `DefaultRequestHandler`, `create_agent_card_routes` et
+  `create_jsonrpc_routes` du SDK A2A.
+- **Raison** : LangGraph ne fournit pas de serveur A2A. Écrire l'exécuteur
+  montre le protocole « à nu » : création de la Task (`SUBMITTED`),
+  `start_work`, un statut `WORKING` par nœud terminé (via
+  `graph.astream(stream_mode="updates")`), artefact `data`, état terminal.
+  Le même adaptateur sert aux deux agents (aucune duplication).
+- **États terminaux distingués** : entrée invalide → `REJECTED` (l'agent refuse
+  la demande) ; exception pendant le graphe → `FAILED` (l'agent a échoué).
+- **Compromis** : `InMemoryTaskStore` : les Tasks disparaissent au
+  redémarrage (suffisant pour un audit local ; `DatabaseTaskStore` existe).
+
+## D13. La sévérité est décidée par une politique déterministe, pas par le LLM
+
+- **Décision** : `policy.py` = table règle → (sévérité, score, raison) +
+  3 ajustements explicites (poisoning d'exfiltration → critical ; confirmation
+  LLM → +0,3 au score ; IV001 alimentant IV002/IV003 → +1 cran). Le LLM
+  (Mistral via `langchain-mistralai`, sortie structurée par tool calling) rédige
+  seulement les justifications, en un seul appel pour tous les constats.
+- **Garde-fous** : identifiants inventés par le LLM ignorés ; constat oublié →
+  justification gabarit ; la preuve d'origine est conservée telle quelle.
+- **Compromis** : la politique ne connaît pas le contexte métier (un outil
+  shell peut être légitime dans un serveur d'administration). Elle est lisible et
+  modifiable en un endroit, ce qui rend ce compromis discutable et ajustable.
+
+## D14. Correctifs : code relu dans un catalogue, LLM limité à une phrase
+
+- **Décision** : le catalogue (`remediation/catalog.py`) contient, par règle,
+  correctif, étapes, exemple de code et références CWE/OWASP. Le LLM réécrit
+  uniquement la phrase `fix` pour le cas précis ; `baseline_fix` conserve
+  toujours la version relue.
+- **Constat (test live)** : malgré la consigne, Mistral Nemo a écrit du code
+  dans une phrase (IV002) et a **affaibli** le correctif EP001 (« retirer
+  `shell=True` et valider » au lieu de « supprimer l'exécution arbitraire »).
+  D'où `baseline_fix` : le lecteur voit toujours le correctif de référence.
+
+## D15. Une seule variable de modèle pour deux frameworks
+
+- `AUDITOR_LLM_MODEL` est au format LiteLLM (`mistral/open-mistral-nemo`) pour
+  ADK ; côté LangChain on retire le préfixe (`mistral_model_name()`).
+
+## D16. Les nombres deviennent des flottants dans une partie `data` A2A
+
+- **Constat** : en A2A 1.x, une partie `data` est un `google.protobuf.Value`
+  (Struct) ; comme en JSON-Schema protobuf, tout nombre est un `double` :
+  `line: 53` arrive `53.0`, `counts: {"high": 6}` arrive `6.0`.
+- **Décision** : chaque agent **revalide** son entrée avec le modèle Pydantic
+  attendu (`input_model` dans l'exécuteur, `model_validate` dans
+  l'orchestrateur) ; Pydantic reconvertit `53.0` en `int`. Test :
+  `test_cross_framework_chain_adk_to_langgraph`.
+- **Leçon** : un contrat d'interface entre agents doit être validé à la
+  réception, jamais supposé.
