@@ -253,6 +253,13 @@ Chaque entrée : **contexte → décision → raison → compromis**.
   la carte) et vérifier les signatures de carte (`AgentCard.signatures`,
   `signature_verifier` du résolveur, présents dans a2a-sdk 1.x).
 
+**Ajout (vérification sur clone propre, phase 6)** : le démarrage rapide
+échouait au premier lancement : la compilation du bytecode d'ADK/LangChain
+consommait presque tout le délai de 60 s partagé entre les quatre agents. Les
+agents démarrent désormais en parallèle, avec un délai de 180 s
+(`AUDITOR_STARTUP_TIMEOUT`). Mesure sur clone neuf : ~60 s de bout en bout.
+
+
 ## D20. L'auto-audit trouve de vrais faux positifs
 
 - **Décision** : un test applique les règles de code à tout `src/auditor`.
@@ -271,9 +278,3 @@ Chaque entrée : **contexte → décision → raison → compromis**.
   acceptés par le serveur si `enable_v0_3_compat=True`, ce que fait ADK).
 - **Correction** : nos commentaires et diagrammes utilisaient les noms 0.3,
   écrits de mémoire ; ils ont été alignés sur le code du SDK installé.
-
-**Ajout (vérification sur clone propre, phase 6)** : le démarrage rapide
-échouait au premier lancement : la compilation du bytecode d'ADK/LangChain
-consommait presque tout le délai de 60 s partagé entre les quatre agents. Les
-agents démarrent désormais en parallèle, avec un délai de 180 s
-(`AUDITOR_STARTUP_TIMEOUT`). Mesure sur clone neuf : ~60 s de bout en bout.
