@@ -262,3 +262,12 @@ Chaque entrée : **contexte → décision → raison → compromis**.
   (2) HS001 sur un exemple de clé AWS dans une docstring : comportement voulu
   (les scanners de secrets signalent aussi la documentation) ; c'est la
   docstring qui a été changée.
+
+## D21. Noms des méthodes JSON-RPC : A2A 1.0 ≠ 0.3
+
+- **Constat** : en A2A 1.0 (a2a-sdk 1.x), les méthodes JSON-RPC sont
+  `SendMessage`, `SendStreamingMessage`, `GetTask`, `CancelTask`… Les noms
+  `message/send`, `message/stream`, `tasks/get` sont ceux de la 0.3 (encore
+  acceptés par le serveur si `enable_v0_3_compat=True`, ce que fait ADK).
+- **Correction** : nos commentaires et diagrammes utilisaient les noms 0.3,
+  écrits de mémoire ; ils ont été alignés sur le code du SDK installé.

@@ -2,7 +2,7 @@
 
 `to_a2a` (fourni par ADK) enveloppe l'agent dans une application Starlette qui :
 - sert l'Agent Card sur /.well-known/agent-card.json (découverte) ;
-- reçoit les messages JSON-RPC A2A (`message/send`, `message/stream`, `tasks/get`…) ;
+- reçoit les messages JSON-RPC A2A (`SendMessage`, `SendStreamingMessage`, `GetTask`… — noms A2A 1.0) ;
 - convertit chaque événement ADK en mise à jour de Task A2A (A2aAgentExecutor).
 Aucune ligne de protocole A2A à écrire nous-mêmes : c'est l'intérêt du standard.
 """

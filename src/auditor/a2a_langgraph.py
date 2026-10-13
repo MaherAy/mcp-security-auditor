@@ -12,7 +12,7 @@ d'exposer N'IMPORTE QUEL code en A2A, et elle rend visible ce qu'ADK cachait :
                                                └─ status COMPLETED / FAILED
 
 Le `TaskStore` (en mémoire) garde l'état de chaque Task, ce qui permet au
-client de la relire ensuite avec `tasks/get`.
+client de la relire ensuite avec `GetTask`.
 """
 
 from typing import Any

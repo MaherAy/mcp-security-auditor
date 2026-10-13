@@ -166,7 +166,7 @@ async def send_task(
     on_update: Callable[[TaskTrace], None] | None = None,
 ) -> tuple[Task, TaskTrace]:
     """Envoie un message (→ crée une Task), suit les mises à jour en streaming,
-    puis relit la Task finale complète avec `tasks/get`."""
+    puis relit la Task finale complète avec `GetTask`."""
     client = ClientFactory(ClientConfig(httpx_client=http, streaming=card.capabilities.streaming)).create(
         card
     )
