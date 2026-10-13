@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Audit Console</title>
+<style>
+  :root {
+    --bg: #0a0f1c; --panel: #111829; --panel-2: #172036; --line: #24304a;
+    --text: #e6ebf5; --muted: #8a96b0; --faint: #5d6880;
+    --a2a: #5b8cff; --mcp: #34d399; --llm: #f59e0b;
+    --submitted: #f5b041; --working: #5b8cff; --completed: #34d399; --failed: #f87171;
+    --critical: #ff4d6d; --high: #ff8c42; --medium: #ffd166; --low: #6aa9ff;
+    --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px;
+           border-bottom: 1px solid var(--line); background: #0d1424; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  .spacer { flex: 1; }
+  select, button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+                   border-radius: 8px; padding: 7px 12px; }
+  button.primary { background: var(--a2a); border-color: var(--a2a); color: #fff; font-weight: 600; cursor: pointer; }
+  button.primary:disabled { opacity: .5; cursor: progress; }
+  .pill { font: 600 12px var(--sans); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+          color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .pill.working { color: var(--working); border-color: var(--working); }
+  .pill.completed { color: var(--completed); border-color: var(--completed); }
+  .pill.failed, .pill.rejected { color: var(--failed); border-color: var(--failed); }
+  main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; padding: 16px 24px 32px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; }
+  .panel h2 small { text-transform: none; letter-spacing: 0; color: var(--faint); font-weight: 400; margin-left: 6px; }
+  .full { grid-column: 1 / -1; }
+  /* Topology */
+  #topology svg { width: 100%; height: auto; display: block; }
+  .node rect { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; rx: 10; transition: stroke .3s, fill .3s; }
+  .node .title { fill: var(--text); font: 600 13px var(--sans); }
+  .node .sub { fill: var(--muted); font: 11px var(--sans); }
+  .node .state { font: 600 10px var(--mono); text-transform: uppercase; }
+  .node.offline rect { stroke-dasharray: 4 3; opacity: .55; }
+  .node.submitted rect { stroke: var(--submitted); }
+  .node.working rect { stroke: var(--working); fill: #15244a; animation: pulse 1.1s ease-in-out infinite; }
+  .node.completed rect { stroke: var(--completed); }
+  .node.failed rect, .node.rejected rect { stroke: var(--failed); }
+  .node.submitted .state { fill: var(--submitted); } .node.working .state { fill: var(--working); }
+  .node.completed .state { fill: var(--completed); } .node.failed .state, .node.rejected .state { fill: var(--failed); }
+  @keyframes pulse { 50% { stroke-width: 3.5; } }
+  .edge { fill: none; stroke-width: 2; opacity: .45; transition: opacity .3s; }
+  .edge.a2a { stroke: var(--a2a); } .edge.mcp { stroke: var(--mcp); stroke-dasharray: 6 5; }
+  .edge.llm { stroke: var(--llm); stroke-dasharray: 2 5; opacity: .3; }
+  .edge.active { opacity: 1; stroke-width: 3; stroke-dasharray: 10 6; animation: flow .6s linear infinite; }
+  @keyframes flow { to { stroke-dashoffset: -16; } }
+  .edge-label { fill: var(--faint); font: 10px var(--mono); }
+  .legend { display: flex; gap: 16px; color: var(--muted); font-size: 12px; margin-top: 6px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 22px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+  /* Timeline */
+  .lane { display: grid; grid-template-columns: 118px 1fr 74px; align-items: center; gap: 10px; margin: 8px 0; }
+  .lane .who { font-weight: 600; } .lane .who small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+  .track { position: relative; height: 18px; background: var(--panel-2); border-radius: 6px; overflow: hidden; }
+  .seg { position: absolute; top: 0; bottom: 0; border-radius: 6px; transition: left .2s, width .2s; }
+  .seg.submitted { background: var(--submitted); opacity: .55; } .seg.working { background: var(--working); }
+  .seg.completed { background: var(--completed); } .seg.failed { background: var(--failed); }
+  .lane .dur { font: 12px var(--mono); color: var(--muted); text-align: right; }
+  /* Log */
+  #log { font: 12px/1.6 var(--mono); max-height: 520px; overflow: auto; }
+  #log .row { display: grid; grid-template-columns: 62px 96px 1fr; gap: 8px; padding: 1px 0; border-bottom: 1px dashed #1b2540; }
+  #log .t { color: var(--faint); } #log .msg { color: var(--text); word-break: break-word; }
+  .role { font: 600 11px var(--mono); }
+  .role.orchestrator { color: #c4b5fd; } .role.scanner { color: #60a5fa; }
+  .role.evaluator { color: #34d399; } .role.remediation { color: #fbbf24; }
+  .empty { color: var(--faint); font-style: italic; }
+  /* Results */
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .kpi b { display: block; font-size: 22px; } .kpi span { color: var(--muted); font-size: 12px; }
+  .kpi.critical b { color: var(--critical); } .kpi.high b { color: var(--high); }
+  .kpi.medium b { color: var(--medium); } .kpi.low b { color: var(--low); }
+  .results { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 8px; border-bottom: 1px solid #1b2540; vertical-align: top; }
+  tr.finding { cursor: pointer; } tr.finding:hover, tr.finding.selected { background: var(--panel-2); }
+  .sev { font: 700 10px var(--mono); padding: 2px 7px; border-radius: 5px; text-transform: uppercase; color: #0a0f1c; }
+  .sev.critical { background: var(--critical); } .sev.high { background: var(--high); }
+  .sev.medium { background: var(--medium); } .sev.low { background: var(--low); }
+  .rule { font: 11px var(--mono); color: var(--muted); }
+  .llm-tag { font: 600 10px var(--mono); color: var(--llm); margin-left: 6px; }
+  #detail { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-height: 200px; }
+  #detail h3 { margin: 4px 0 10px; font-size: 15px; }
+  #detail h4 { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+  #detail pre { background: #0b1222; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 0;
+                font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+  #detail ol { margin: 0; padding-left: 18px; } #detail a { color: var(--a2a); }
+  .baseline { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  footer { color: var(--faint); font-size: 12px; padding: 0 24px 24px; }
+  @media (max-width: 1100px) { main, .results { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(3, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>MCP Audit Console <span>· multi-agent static auditor (MCP + A2A)</span></h1>
+  <div class="spacer"></div>
+  <label for="target" class="pill">target</label>
+  <select id="target"></select>
+  <button id="run" class="primary">Run audit</button>
+  <span id="status" class="pill">idle</span>
+</header>
+
+<main>
+  <section class="panel" id="topology">
+    <h2>Agent topology <small>A2A between agents · MCP to tools · live Task states</small></h2>
+    <svg viewBox="0 0 900 330" aria-label="Agent topology">
+      <defs>
+        <marker id="arrow-a2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b8cff"/></marker>
+        <marker id="arrow-mcp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#34d399"/></marker>
+      </defs>
+      <!-- edges -->
+      <path id="e-console" class="edge a2a" d="M120,165 L178,165" marker-end="url(#arrow-a2a)"/>
+      <path id="e-scanner" class="edge a2a" d="M330,150 C380,150 380,58 428,58" marker-end="url(#arrow-a2a)"/>
+      <path id="e-evaluator" class="edge a2a" d="M330,165 L428,165" marker-end="url(#arrow-a2a)"/>
+      <path id="e-remediation" class="edge a2a" d="M330,180 C380,180 380,272 428,272" marker-end="url(#arrow-a2a)"/>
+      <path id="e-inspector" class="edge mcp" d="M580,58 L638,58" marker-end="url(#arrow-mcp)"/>
+      <path id="e-target" class="edge mcp" d="M740,78 C760,110 760,130 776,150" marker-end="url(#arrow-mcp)"/>
+      <path id="e-llm" class="edge llm" d="M580,180 C640,200 650,250 690,262"/>
+      <text class="edge-label" x="350" y="98">A2A</text>
+      <text class="edge-label" x="588" y="48">MCP stdio</text>
+      <text class="edge-label" x="760" y="112">tools/list</text>
+      <!-- nodes -->
+      <g class="node" id="n-console"><rect x="10" y="135" width="110" height="60"/>
+        <text class="title" x="22" y="160">Console</text><text class="sub" x="22" y="178">A2A client</text></g>
+      <g class="node" id="n-orchestrator"><rect x="180" y="125" width="150" height="80"/>
+        <text class="title" x="194" y="150">Orchestrator</text><text class="sub" x="194" y="168" id="fw-orchestrator">—</text>
+        <text class="state" x="194" y="192" id="st-orchestrator">idle</text></g>
+      <g class="node" id="n-scanner"><rect x="430" y="20" width="150" height="76"/>
+        <text class="title" x="444" y="44">Scanner</text><text class="sub" x="444" y="62" id="fw-scanner">—</text>
+        <text class="state" x="444" y="84" id="st-scanner">idle</text></g>
+      <g class="node" id="n-evaluator"><rect x="430" y="127" width="150" height="76"/>
+        <text class="title" x="444" y="151">Evaluator</text><text class="sub" x="444" y="169" id="fw-evaluator">—</text>
+        <text class="state" x="444" y="191" id="st-evaluator">idle</text></g>
+      <g class="node" id="n-remediation"><rect x="430" y="234" width="150" height="76"/>
+        <text class="title" x="444" y="258">Remediation</text><text class="sub" x="444" y="276" id="fw-remediation">—</text>
+        <text class="state" x="444" y="298" id="st-remediation">idle</text></g>
+      <g class="node" id="n-inspector"><rect x="640" y="30" width="110" height="56"/>
+        <text class="title" x="652" y="54">mcp-inspector</text><text class="sub" x="652" y="72">MCP server</text></g>
+      <g class="node" id="n-target"><rect x="760" y="150" width="130" height="56"/>
+        <text class="title" x="772" y="174" id="target-label">target</text><text class="sub" x="772" y="192">MCP server (audited)</text></g>
+      <g class="node" id="n-llm"><rect x="690" y="240" width="130" height="50"/>
+        <text class="title" x="702" y="262">Mistral</text><text class="sub" x="702" y="279" id="llm-label">optional LLM</text></g>
+    </svg>
+    <div class="legend">
+      <span><i style="border-color:var(--a2a)"></i>A2A (HTTP JSON-RPC)</span>
+      <span><i style="border-color:var(--mcp);border-top-style:dashed"></i>MCP (stdio)</span>
+      <span><i style="border-color:var(--llm);border-top-style:dotted"></i>LLM call (optional)</span>
+    </div>
+  </section>
+
+  <section class="panel" style="grid-row: span 2">
+    <h2>Live event stream <small>ProgressEvents relayed from the orchestrator's A2A Task</small></h2>
+    <div id="log"><div class="empty">Pick a target and run an audit.</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>A2A Task timeline <small>submitted → working → completed, per delegated agent</small></h2>
+    <div id="timeline"></div>
+  </section>
+
+  <section class="panel full" id="results-panel">
+    <h2>Report <small id="report-meta"></small></h2>
+    <div class="kpis" id="kpis"></div>
+    <div class="results">
+      <div><table><thead><tr><th>Severity</th><th>Finding</th><th>Location</th></tr></thead>
+        <tbody id="findings"><tr><td colspan="3" class="empty">No report yet.</td></tr></tbody></table></div>
+      <div id="detail"><div class="empty">Select a finding to see its evidence, justification and fix.</div></div>
+    </div>
+  </section>
+</main>
+<footer>Static, defensive audit of local test servers only. Untrusted target content is rendered as plain text.</footer>
+
+<script>
+"use strict";
+// SÉCURITÉ : les preuves et descriptions viennent du serveur audité (texte hostile,
+// ex. "<IMPORTANT>…"). Tout passe par el()/textContent — jamais innerHTML.
+const $ = (id) => document.getElementById(id);
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children) if (child != null) node.append(child);
+  return node;
+}
+
+const ROLES = ["scanner", "evaluator", "remediation"];
+let lanes = {}, startTime = null, timer = null, source = null, selected = null;
+
+function setNode(role, state) {
+  const node = $("n-" + role);
+  node.classList.remove("submitted", "working", "completed", "failed", "rejected");
+  if (state) node.classList.add(state);
+  const label = $("st-" + role);
+  if (label) label.textContent = state || "idle";
+}
+function setFramework(role, framework, name) {
+  const fw = $("fw-" + role);
+  if (!fw) return;
+  fw.textContent = framework;
+  const tip = fw.parentNode.querySelector("title") || fw.parentNode.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title"));
+  tip.textContent = name ? name + " (" + framework + ")" : framework;
+}
+function setEdge(id, active) { $(id).classList.toggle("active", !!active); }
+function setStatus(state) { const s = $("status"); s.className = "pill " + state; s.textContent = state; }
+
+async function loadAgents() {
+  const agents = await (await fetch("/api/agents")).json();
+  for (const agent of agents) {
+    const node = $("n-" + agent.role);
+    node.classList.toggle("offline", !agent.online);
+    setFramework(agent.role, agent.online ? agent.framework : "offline", agent.name);
+  }
+  const targets = await (await fetch("/api/targets")).json();
+  const select = $("target");
+  select.replaceChildren(...targets.map((t) => el("option", { value: t, text: t })));
+  if (targets.includes("weak_server")) select.value = "weak_server";
+}
+
+function log(at, role, message) {
+  const box = $("log");
+  if (box.querySelector(".empty")) box.replaceChildren();
+  const t = startTime ? "+" + ((Date.parse(at) - startTime) / 1000).toFixed(2) + "s" : "";
+  box.append(el("div", { class: "row" }, el("span", { class: "t", text: t }),
+    el("span", { class: "role " + (role || "orchestrator"), text: role || "orchestrator" }),
+    el("span", { class: "msg", text: message })));
+  box.scrollTop = box.scrollHeight;
+}
+
+function resetRun() {
+  lanes = {}; startTime = null; selected = null;
+  for (const role of ["orchestrator", ...ROLES]) setNode(role, null);
+  for (const id of ["e-console", "e-scanner", "e-evaluator", "e-remediation", "e-inspector", "e-target", "e-llm"]) setEdge(id, false);
+  for (const id of ["n-inspector", "n-target"]) $(id).classList.remove("working", "completed");
+  $("log").replaceChildren(); $("kpis").replaceChildren(); $("report-meta").textContent = "";
+  $("findings").replaceChildren(el("tr", {}, el("td", { colspan: "3", class: "empty", text: "Audit running…" })));
+  $("detail").replaceChildren(el("div", { class: "empty", text: "Select a finding to see its evidence, justification and fix." }));
+  $("timeline").replaceChildren(...ROLES.map((role) => {
+    lanes[role] = { track: el("div", { class: "track" }), dur: el("span", { class: "dur", text: "—" }), marks: {} };
+    return el("div", { class: "lane" },
+      el("div", { class: "who", text: role }, el("small", { id: "lane-fw-" + role, text: $("fw-" + role).textContent })),
+      lanes[role].track, lanes[role].dur);
+  }));
+}
+
+function drawTimeline() {
+  if (!startTime) return;
+  const now = Date.now(), span = Math.max(now - startTime, 1000);
+  for (const role of ROLES) {
+    const lane = lanes[role], m = lane.marks;
+    lane.track.replaceChildren();
+    const order = ["submitted", "working"];
+    order.forEach((state, i) => {
+      if (!m[state]) return;
+      const end = m[order[i + 1]] || m.completed || m.failed || now;
+      const cls = state === "working" && (m.completed || m.failed) ? (m.failed ? "failed" : "completed") : state;
+      lane.track.append(el("div", { class: "seg " + cls,
+        style: `left:${((m[state] - startTime) / span) * 100}%;width:${Math.max(((end - m[state]) / span) * 100, 0.6)}%` }));
+    });
+    if (m.submitted) lane.dur.textContent = (((m.completed || m.failed || now) - m.submitted) / 1000).toFixed(2) + " s";
+  }
+}
+
+function onProgress(ev) {
+  if (!startTime) startTime = Date.parse(ev.at);
+  log(ev.at, ev.role, ev.message);
+  if (ev.kind === "discovered") {
+    for (const agent of ev.agents) setFramework(agent.role, agent.framework, agent.name);
+  }
+  if (ev.kind === "task_state" && ev.role) {
+    setNode(ev.role, ev.state);
+    setEdge("e-" + ev.role, ev.state === "submitted" || ev.state === "working");
+    lanes[ev.role].marks[ev.state] = Date.parse(ev.at);
+    if (ev.role === "scanner" && ev.state !== "working") { setEdge("e-inspector", false); setEdge("e-target", false); }
+  }
+  if (ev.kind === "agent_message" && ev.role === "scanner" && ev.message.includes("MCP")) {
+    setEdge("e-inspector", true); $("n-inspector").classList.add("working");
+    if (ev.message.includes("tools/list")) { setEdge("e-target", true); $("n-target").classList.add("completed"); }
+    if (ev.message.includes("read_source")) { setEdge("e-target", false); $("n-inspector").classList.replace("working", "completed"); setEdge("e-inspector", false); }
+  }
+  if (ev.kind === "agent_message" && ev.message.includes("LLM")) setEdge("e-llm", true);
+  drawTimeline();
+}
+
+function renderReport(report) {
+  const counts = report.counts, sev = ["critical", "high", "medium", "low"];
+  const duration = startTime ? ((Date.now() - startTime) / 1000).toFixed(1) + " s" : "—";
+  // Honnêteté : le nœud Mistral dit s'il a vraiment servi (mode hors-ligne = gabarits).
+  $("llm-label").textContent = report.justified_by === "llm" ? "used for prose" : "not used (offline)";
+  $("n-llm").classList.toggle("offline", report.justified_by !== "llm");
+  $("report-meta").textContent = `${report.target} · ${report.server_name} · ${report.tools_count} tools · justified by ${report.justified_by}`;
+  $("kpis").replaceChildren(
+    el("div", { class: "kpi " + (report.overall_risk === "none" ? "" : report.overall_risk) },
+      el("b", { text: String(report.overall_risk).toUpperCase() }), el("span", { text: "overall risk" })),
+    ...sev.map((s) => el("div", { class: "kpi " + s }, el("b", { text: String(counts[s] || 0) }), el("span", { text: s }))),
+    el("div", { class: "kpi" }, el("b", { text: duration }), el("span", { text: report.agents.length + " A2A tasks" })));
+  const rows = report.items.map((item, index) => {
+    const f = item.finding;
+    const loc = [f.tool && "tool " + f.tool, f.file && f.file + (f.line ? ":" + Math.round(f.line) : "")].filter(Boolean).join(" · ");
+    const row = el("tr", { class: "finding" },
+      el("td", {}, el("span", { class: "sev " + f.severity, text: f.severity })),
+      el("td", {}, el("div", { text: f.title }), el("span", { class: "rule", text: f.rule_id + " · " + f.category }),
+        f.detector === "llm" ? el("span", { class: "llm-tag", text: "LLM" }) : null),
+      el("td", { class: "rule", text: loc || "—" }));
+    row.addEventListener("click", () => showDetail(item, row));
+    if (index === 0) setTimeout(() => showDetail(item, row));
+    return row;
+  });
+  $("findings").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "3", class: "empty", text: "No finding." }))]));
+}
+
+function showDetail(item, row) {
+  if (selected) selected.classList.remove("selected");
+  selected = row; row.classList.add("selected");
+  const f = item.finding, fix = item.remediation;
+  const parts = [
+    el("span", { class: "sev " + f.severity, text: f.severity + " · " + f.score + "/10" }),
+    el("h3", { text: f.title }),
+    el("h4", { text: "Evidence (untrusted, shown as text)" }), el("pre", { text: f.evidence }),
+  ];
+  if (f.indicators.length) parts.push(el("h4", { text: "Indicators" }), el("div", { text: f.indicators.join(" · ") }));
+  parts.push(el("h4", { text: "Why it matters" }), el("div", { text: f.justification }),
+             el("h4", { text: "Severity rationale" }), el("div", { class: "baseline", text: f.rationale }));
+  if (fix) {
+    parts.push(el("h4", { text: "Fix" }), el("div", { text: fix.fix }));
+    if (fix.fix !== fix.baseline_fix) parts.push(el("div", { class: "baseline", text: "Reviewed baseline: " + fix.baseline_fix }));
+    parts.push(el("ol", {}, ...fix.steps.map((s) => el("li", { text: s }))));
+    if (fix.code_example) parts.push(el("h4", { text: "Example" }), el("pre", { text: fix.code_example }));
+    const refs = fix.references.filter((r) => r.startsWith("https://"));
+    if (refs.length) parts.push(el("h4", { text: "References" }),
+      el("div", {}, ...refs.flatMap((r, i) => [i ? " · " : "", el("a", { href: r, target: "_blank", rel: "noopener noreferrer", text: r.replace("https://", "") })])));
+  }
+  $("detail").replaceChildren(...parts);
+}
+
+async function runAudit() {
+  if (source) source.close();
+  resetRun(); setStatus("submitted"); $("run").disabled = true;
+  const target = $("target").value;
+  $("target-label").textContent = target;
+  setNode("orchestrator", "submitted"); setEdge("e-console", true);
+  const response = await fetch("/api/audits", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target }) });
+  const { audit_id, error } = await response.json();
+  if (error) { setStatus("failed"); log(new Date().toISOString(), null, error); $("run").disabled = false; return; }
+  timer = setInterval(drawTimeline, 200);
+  source = new EventSource(`/api/audits/${audit_id}/events`);
+  source.addEventListener("orchestrator", (e) => { const d = JSON.parse(e.data); setNode("orchestrator", d.state); setStatus(d.state); });
+  source.addEventListener("progress", (e) => onProgress(JSON.parse(e.data)));
+  source.addEventListener("report", (e) => { renderReport(JSON.parse(e.data).report); setStatus("completed"); });
+  source.addEventListener("error", (e) => {
+    if (!e.data) return;
+    const d = JSON.parse(e.data); setStatus("failed"); setNode("orchestrator", "failed"); log(new Date().toISOString(), null, d.message);
+  });
+  source.addEventListener("done", () => {
+    source.close(); clearInterval(timer); drawTimeline(); setEdge("e-console", false); setEdge("e-llm", false);
+    $("run").disabled = false;
+  });
+}
+
+$("run").addEventListener("click", runAudit);
+loadAgents().catch((err) => log(new Date().toISOString(), null, "cannot reach the console API: " + err));
+</script>
+</body>
+</html>

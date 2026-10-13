@@ -3,6 +3,7 @@
     auditor up                    lance les 4 agents A2A (Ctrl+C pour arrêter)
     auditor audit weak_server     envoie « audit weak_server » à l'orchestrateur (A2A)
     auditor demo weak_server      up + audit + arrêt, en une commande
+    auditor ui                    up + Audit Console (observabilité web) sur http://127.0.0.1:10090
 
 La CLI est elle-même un simple CLIENT A2A de l'orchestrateur : elle ne connaît
 ni le Scanner, ni l'Évaluateur, ni la Remédiation.
@@ -125,6 +126,27 @@ async def audit(target: str, orchestrator_url: str, output_dir: Path) -> AuditRe
     return report
 
 
+def run_console(log_dir: Path, *, port: int, offline: bool, open_browser: bool) -> None:
+    """Démarre les agents, puis l'Audit Console (client A2A de l'orchestrateur)."""
+    import webbrowser
+
+    import uvicorn
+
+    from auditor.ui.server import create_app
+
+    if _port_in_use(port):
+        raise RuntimeError(f"port {port} already in use — use --port")
+    print("Starting agents (logs in reports/logs/)…")
+    with running_agents(log_dir, offline=offline) as urls:
+        console_url = f"http://127.0.0.1:{port}"
+        print(f"Audit Console: {console_url}   (Ctrl+C to stop)")
+        if open_browser:
+            webbrowser.open(console_url)
+        # 127.0.0.1 uniquement : la console n'est jamais exposée sur le réseau.
+        with contextlib.suppress(KeyboardInterrupt):
+            uvicorn.run(create_app(agent_urls=urls), host="127.0.0.1", port=port, log_level="warning")
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # console Windows (cp1252) → UTF-8
         with contextlib.suppress(AttributeError):
@@ -138,12 +160,15 @@ def main(argv: list[str] | None = None) -> int:
     up = commands.add_parser("up", help="start the four A2A agents")
     run = commands.add_parser("audit", help="ask the running orchestrator to audit a target")
     demo = commands.add_parser("demo", help="start the agents, audit a target, stop the agents")
+    ui = commands.add_parser("ui", help="start the agents and the web Audit Console (observability)")
+    ui.add_argument("--port", type=int, default=int(os.environ.get("AUDITOR_UI_PORT", "10090")))
+    ui.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
     for command in (run, demo):
         command.add_argument("target", help="target folder name in targets/, e.g. weak_server")
         command.add_argument(
             "--out", type=Path, default=Path("reports"), help="output folder (default: reports)"
         )
-    for command in (up, demo):
+    for command in (up, demo, ui):
         command.add_argument("--offline", action="store_true", help="never call the LLM (templates only)")
     run.add_argument("--url", default=None, help="orchestrator URL (default: from AUDITOR_* env vars)")
     args = parser.parse_args(argv)
@@ -159,6 +184,8 @@ def main(argv: list[str] | None = None) -> int:
                 with contextlib.suppress(KeyboardInterrupt):
                     while True:
                         time.sleep(1)
+        elif args.command == "ui":
+            run_console(log_dir, port=args.port, offline=args.offline, open_browser=not args.no_browser)
         elif args.command == "audit":
             asyncio.run(audit(args.target, args.url or agent_url("orchestrator"), args.out))
         else:
