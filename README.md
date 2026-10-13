@@ -12,6 +12,10 @@
 > Student project (generative-AI engineering) built to study MCP and A2A in depth.
 > Scope: **static, defensive** audits of **local test servers only**: no exploit, no attack, no third-party scanning.
 
+<img src="docs/demo.gif" width="800" alt="Terminal demo: 'auditor demo weak_server --offline' starts four A2A agents, the orchestrator delegates scan, evaluation and remediation tasks to Google ADK and LangGraph agents, then the prioritized report lists 15 findings from critical to low" />
+
+<sub>Real recording, played back at 2×. Regenerate with <code>vhs docs/demo.tape</code>.</sub>
+
 ---
 
 ## The problem
@@ -27,8 +31,7 @@ This project audits an MCP server for these four risk classes, rates each findin
 
 ## Demo
 
-<!-- GIF placeholder: record `uv run auditor demo weak_server` and save it as docs/assets/demo.gif -->
-<!-- ![Demo](docs/assets/demo.gif) -->
+The GIF above in text form:
 
 ```text
 $ uv run auditor demo weak_server --offline
