@@ -35,6 +35,7 @@ from a2a.types import (
     SendMessageRequest,
     Task,
     TaskState,
+    TaskStatus,
 )
 from a2a.utils.constants import PROTOCOL_VERSION_CURRENT, TransportProtocol
 from google.protobuf.json_format import MessageToDict
@@ -124,8 +125,9 @@ def task_data(task: Task) -> dict[str, Any]:
     raise ValueError(f"task {task.id} has no structured data artifact")
 
 
-def task_status_text(task: Task) -> str:
-    message = task.status.message
+def task_status_text(task_or_status: Task | TaskStatus) -> str:
+    status = task_or_status.status if isinstance(task_or_status, Task) else task_or_status
+    message = status.message
     return " ".join(part.text for part in message.parts if part.WhichOneof("content") == "text")
 
 
@@ -139,6 +141,7 @@ class TaskTrace:
     agent_name: str
     task_id: str = ""
     states: list[str] = field(default_factory=list)
+    messages: list[str] = field(default_factory=list)  # textes des statuts reçus (progression)
 
     def record(self, state: int) -> None:
         name = TaskState.Name(state).removeprefix("TASK_STATE_").lower()
@@ -180,6 +183,9 @@ async def send_task(
         elif kind == "status_update":
             trace.task_id = response.status_update.task_id
             trace.record(response.status_update.status.state)
+            status_text = task_status_text(response.status_update.status)
+            if status_text:
+                trace.messages.append(status_text)
         if on_update:
             on_update(trace)
     task = await client.get_task(GetTaskRequest(id=trace.task_id))
