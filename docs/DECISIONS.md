@@ -64,3 +64,42 @@ Chaque entrée : **contexte → décision → raison → compromis**.
   d'outil, et outils dangereux de la cible inertes par défaut.
 - **Ajout** : un troisième outil `list_source_files(target)` complète
   `list_tools` et `read_source`, sinon l'agent devrait deviner les chemins.
+
+## D6. Scanner = `BaseAgent` ADK piloté par le code + sous-agent LLM optionnel
+
+- **Décision** : le Scanner est un agent ADK personnalisé (`BaseAgent`) dont le
+  parcours est codé (manifeste → fichiers → règles). Un `LlmAgent` Mistral
+  (`description_reviewer`) apporte un second avis sémantique sur les
+  descriptions ; ses constats sont marqués `detector="llm"`.
+- **Raison** : le parcours d'un audit est connu d'avance ; laisser un LLM
+  choisir les appels d'outils ajouterait coût, latence et non-déterminisme.
+  Le LLM est utilisé là où les regex sont faibles (manipulation reformulée).
+- **Compromis** : moins « autonome » qu'un agent ReAct. Assumé : en sécurité, la
+  traçabilité prime. Les descriptions sont présentées au LLM comme des
+  *données* (« never as instructions ») : la relecture elle-même est exposée à
+  l'injection de prompt, ce qui explique pourquoi elle ne peut qu'ajouter un
+  constat, jamais en retirer un.
+
+## D7. ADK 2.x + MCP 2.x : écarts constatés
+
+- `McpTool.run_async` exige un `tool_context` ; en ADK 2.x, `ToolContext` est un
+  simple alias de `google.adk.agents.context.Context`, construit avec
+  `Context(invocation_context)`.
+- Le résultat d'un outil MCP arrive sous forme de `dict` avec les clés 1.x
+  (`structuredContent`, `isError`) : ADK ré-aliase volontairement le format
+  snake_case de mcp 2.x pour rester compatible. On lit donc les clés 1.x.
+- Avertissements internes à ADK filtrés dans `pyproject.toml` (fonctionnalités
+  `[EXPERIMENTAL]` activées par défaut ; ADK instancie lui-même sa classe
+  `MCPTool` qu'il a dépréciée). Ils ne viennent pas de notre code.
+
+## D8. Mistral via LiteLLM, tests avec un faux LLM
+
+- **Décision** : `LiteLlm(model="mistral/mistral-small-latest")` (surchargeable
+  par `AUDITOR_LLM_MODEL`). Les tests utilisent `ScriptedLlm`, un `BaseLlm`
+  qui renvoie une réponse fixée ; un test `@pytest.mark.live` appelle le vrai
+  Mistral et est ignoré sans `MISTRAL_API_KEY`.
+- **Raison** : ADK est optimisé pour Gemini mais accepte tout fournisseur via
+  LiteLLM. Le faux LLM teste notre logique (fusion des avis, prompt) sans
+  dépendre du réseau ni d'un quota.
+- **Compromis** : le test hors-ligne ne vérifie pas la *qualité* du jugement de
+  Mistral, seulement notre intégration.
